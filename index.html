@@ -86,6 +86,14 @@
       color: #f8fafc;
     }
 
+    .error-message {
+      min-height: 1.2em;
+      margin: -10px 2px 0;
+      color: #fca5a5;
+      font-size: 0.9rem;
+      text-align: right;
+    }
+
     .keys {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -131,7 +139,7 @@
     .equal {
       background: linear-gradient(145deg, rgba(52, 211, 153, 0.9), rgba(6, 182, 212, 0.85));
       color: #041b16;
-      grid-row: span 2;
+      grid-column: span 2;
     }
 
     .zero {
@@ -249,30 +257,35 @@
       <div class="display-wrap">
         <div id="display" aria-live="polite">0</div>
       </div>
+      <p id="errorMessage" class="error-message" role="alert" aria-live="assertive"></p>
 
       <div class="keys" aria-label="Calculator keys">
         <button type="button" class="utility" data-action="clear">C</button>
         <button type="button" class="utility" data-action="delete">DEL</button>
-        <button type="button" class="operator" data-value="/">÷</button>
-        <button type="button" class="operator" data-value="*">×</button>
+        <button type="button" class="operator" data-value="(">(</button>
+        <button type="button" class="operator" data-value=")">)</button>
 
         <button type="button" class="digit" data-value="7">7</button>
         <button type="button" class="digit" data-value="8">8</button>
         <button type="button" class="digit" data-value="9">9</button>
-        <button type="button" class="operator" data-value="-">−</button>
+        <button type="button" class="operator" data-value="/">÷</button>
 
         <button type="button" class="digit" data-value="4">4</button>
         <button type="button" class="digit" data-value="5">5</button>
         <button type="button" class="digit" data-value="6">6</button>
-        <button type="button" class="operator" data-value="+">＋</button>
+        <button type="button" class="operator" data-value="*">×</button>
 
         <button type="button" class="digit" data-value="1">1</button>
         <button type="button" class="digit" data-value="2">2</button>
         <button type="button" class="digit" data-value="3">3</button>
-        <button type="button" class="equal" data-action="calculate">=</button>
+        <button type="button" class="operator" data-value="-">−</button>
 
         <button type="button" class="digit zero" data-value="0">0</button>
         <button type="button" class="dot" data-value=".">.</button>
+        <button type="button" class="operator" data-value="%">%</button>
+        <button type="button" class="operator" data-value="+">＋</button>
+        <button type="button" class="operator" data-value="**">^</button>
+        <button type="button" class="equal" data-action="calculate">=</button>
       </div>
     </section>
 
@@ -286,33 +299,47 @@
   </div>
 
   <script>
-    const API_BASE = "";
+    const API_BASE = ["localhost", "127.0.0.1"].includes(location.hostname)
+      ? "http://localhost:8000"
+      : "";
     const display = document.getElementById("display");
+    const errorMessage = document.getElementById("errorMessage");
     const historyList = document.getElementById("historyList");
     const clearHistoryButton = document.getElementById("clearHistoryButton");
     let expression = "";
+    let calculationFailed = false;
 
     function setDisplay(value) {
       display.textContent = value || "0";
     }
 
     function append(value) {
+      if (calculationFailed && (/^[0-9.]$/.test(value) || value === "(")) {
+        expression = "";
+      }
+      calculationFailed = false;
       expression += value;
+      errorMessage.textContent = "";
       setDisplay(expression);
     }
 
     function removeLast() {
+      calculationFailed = false;
+      errorMessage.textContent = "";
       expression = expression.slice(0, -1);
       setDisplay(expression || "0");
     }
 
     function reset() {
       expression = "";
+      calculationFailed = false;
+      errorMessage.textContent = "";
       setDisplay("0");
     }
 
     async function calculate() {
       const value = expression.trim();
+      errorMessage.textContent = "";
       if (!value) {
         setDisplay("0");
         return;
@@ -334,7 +361,8 @@
         setDisplay(expression);
         await loadHistory();
       } catch (error) {
-        alert(error.message || "Calculation failed");
+        calculationFailed = true;
+        errorMessage.textContent = error.message || "Calculation failed";
       }
     }
 
@@ -344,16 +372,30 @@
         return;
       }
 
-      historyList.innerHTML = items.map((item) => `
-        <li class="history-item">
-          <div class="history-text">
-            <span class="expr">${item.expression}</span>
-            <span class="meta">${item.created_at}</span>
-          </div>
-          <div class="result">${item.result}</div>
-          <button type="button" class="delete-btn" data-id="${item.id}">Delete</button>
-        </li>
-      `).join("");
+      historyList.innerHTML = items.map((item) => {
+        const createdAt = item.created_at || "";
+        const parsedTime = new Date(createdAt.replace(" ", "T"));
+        const displayTime = createdAt && !Number.isNaN(parsedTime.getTime())
+          ? new Intl.DateTimeFormat("zh-CN", {
+            year: "numeric", month: "2-digit", day: "2-digit",
+            hour: "2-digit", minute: "2-digit", second: "2-digit"
+          }).format(parsedTime)
+          : "时间未知";
+        const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
+        })[character]);
+
+        return `
+          <li class="history-item">
+            <div class="history-text">
+              <span class="expr">${escapeHtml(item.expression)}</span>
+              <time class="meta" datetime="${escapeHtml(createdAt)}">计算时间：${escapeHtml(displayTime)}</time>
+            </div>
+            <div class="result">${escapeHtml(item.result)}</div>
+            <button type="button" class="delete-btn" data-id="${escapeHtml(item.id)}">Delete</button>
+          </li>
+        `;
+      }).join("");
     }
 
     async function loadHistory() {
@@ -409,8 +451,10 @@
     document.addEventListener("keydown", (event) => {
       if (/^[0-9]$/.test(event.key)) {
         append(event.key);
-      } else if (["+", "-", "*", "/", "."].includes(event.key)) {
+      } else if (["+", "-", "*", "/", ".", "%", "(", ")"].includes(event.key)) {
         append(event.key);
+      } else if (event.key === "^") {
+        append("**");
       } else if (event.key === "Enter" || event.key === "=") {
         event.preventDefault();
         calculate();

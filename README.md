@@ -5,9 +5,10 @@ This front-end client is designed to work with the Python backend service.
 ## Features
 
 - Calculator keypad with basic arithmetic operations
+- Parentheses, modulo, and exponentiation
 - Decimal input and expression editing
 - API-based calculation request to the backend
-- History display from the backend database
+- History display with calculation timestamps
 - Delete single record and clear-all history functions
 
 ## Requirements
